@@ -12,7 +12,7 @@ jobs:
   build:
     name: Build APK
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1536m"
 
@@ -61,47 +61,62 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      - name: Prepare build environment (keystore & permissions)
+      - name: Prepare build environment (debug keystore & permissions)
         shell: bash
         run: |
           touch .env
           if [ ! -f debug.keystore ]; then
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          # If gradlew exists make it executable; if not, skip (we'll use Docker fallback)
+          # keep executable if present at repo root
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
           fi
 
-      - name: Build Debug APK (use gradlew if present, otherwise Docker image with Gradle)
+      - name: Build Debug APK (use gradlew if present, otherwise Docker gradle 9.3.1)
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           echo "Working dir: $PWD"
+          # Prefer gradlew in repo root
           if [ -f ./gradlew ]; then
-            echo "gradlew found in repo — using it."
+            echo "Using ./gradlew from repo root"
             ./gradlew assembleDebug --stacktrace --no-daemon
-          else
-            echo "gradlew not found — using Docker gradle image and mounting Android SDK"
-            # Ensure GITHUB_WORKSPACE and ANDROID_SDK_ROOT are set
-            if [ -z "${GITHUB_WORKSPACE:-}" ]; then
-              echo "::error::GITHUB_WORKSPACE is not set"
-              exit 1
-            fi
-            if [ -z "${ANDROID_SDK_ROOT:-}" ]; then
-              echo "::error::ANDROID_SDK_ROOT is not set"
-              exit 1
-            fi
-            # Run Gradle inside Docker, mount workspace and Android SDK from the runner
-            docker run --rm \
-              -v "${GITHUB_WORKSPACE}":/home/gradle/project \
-              -v "${ANDROID_SDK_ROOT}":"${ANDROID_SDK_ROOT}" \
-              -w /home/gradle/project \
-              --env ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT}" \
-              --env GRADLE_USER_HOME=/home/gradle/.gradle \
-              gradle:8.4-jdk17 \
-              gradle assembleDebug --no-daemon --stacktrace
+            exit $?
           fi
+
+          # Try to find gradlew elsewhere in repo (maxdepth to avoid scanning too deep)
+          GRADLEW_PATH=$(find . -maxdepth 6 -type f -name gradlew -print -quit || true)
+          if [ -n "$GRADLEW_PATH" ]; then
+            echo "Found gradlew at: $GRADLEW_PATH"
+            chmod +x "$GRADLEW_PATH"
+            pushd "$(dirname "$GRADLEW_PATH")" >/dev/null
+            ./gradlew assembleDebug --stacktrace --no-daemon
+            popd >/dev/null
+            exit $?
+          fi
+
+          # Fallback: use Docker image with Gradle >= 9.3.1 required by Android Gradle Plugin 9.1.1
+          echo "gradlew not found — using Docker gradle:9.3.1-jdk17"
+          WORKSPACE="${PWD}"
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
+          echo "Workspace: $WORKSPACE"
+          echo "ANDROID_SDK: $ANDROID_SDK"
+
+          # Ensure Android SDK path exists on runner
+          if [ ! -d "$ANDROID_SDK" ]; then
+            echo "::error::Android SDK not found at $ANDROID_SDK"
+            exit 1
+          fi
+
+          docker run --rm \
+            -v "$WORKSPACE":/home/gradle/project \
+            -v "$ANDROID_SDK":"$ANDROID_SDK" \
+            -w /home/gradle/project \
+            --env ANDROID_SDK_ROOT="$ANDROID_SDK" \
+            --env GRADLE_USER_HOME=/home/gradle/.gradle \
+            gradle:9.3.1-jdk17 \
+            gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
