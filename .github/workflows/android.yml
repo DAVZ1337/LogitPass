@@ -57,7 +57,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('gradle.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
 
@@ -68,7 +68,6 @@ jobs:
           if [ ! -f debug.keystore ]; then
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          # keep executable if present at repo root
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
           fi
@@ -78,14 +77,12 @@ jobs:
         run: |
           set -euo pipefail
           echo "Working dir: $PWD"
-          # Prefer gradlew in repo root
           if [ -f ./gradlew ]; then
             echo "Using ./gradlew from repo root"
             ./gradlew assembleDebug --stacktrace --no-daemon
             exit $?
           fi
 
-          # Try to find gradlew elsewhere in repo (maxdepth to avoid scanning too deep)
           GRADLEW_PATH=$(find . -maxdepth 6 -type f -name gradlew -print -quit || true)
           if [ -n "$GRADLEW_PATH" ]; then
             echo "Found gradlew at: $GRADLEW_PATH"
@@ -96,14 +93,12 @@ jobs:
             exit $?
           fi
 
-          # Fallback: use Docker image with Gradle >= 9.3.1 required by Android Gradle Plugin 9.1.1
           echo "gradlew not found — using Docker gradle:9.3.1-jdk17"
           WORKSPACE="${PWD}"
           ANDROID_SDK="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
           echo "Workspace: $WORKSPACE"
           echo "ANDROID_SDK: $ANDROID_SDK"
 
-          # Ensure Android SDK path exists on runner
           if [ ! -d "$ANDROID_SDK" ]; then
             echo "::error::Android SDK not found at $ANDROID_SDK"
             exit 1
