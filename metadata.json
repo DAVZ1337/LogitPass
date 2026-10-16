@@ -1,0 +1,6 @@
+{
+  "name": "LogitPass",
+  "description": "Bóveda de contraseñas y credenciales 100% local, privada y segura con cifrado militar AES-256-GCM y autenticación biométrica.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
