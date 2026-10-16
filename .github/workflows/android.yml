@@ -15,6 +15,11 @@ jobs:
     timeout-minutes: 60
     env:
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1536m"
+      # Mapea los secrets a variables de entorno para que las puedas usar en 'if'
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -43,86 +48,5 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools" "$ANDROID_SDK_ROOT/platform-tools"
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_SDK_ROOT/emulator" >> "$GITHUB_PATH"
-
-      - name: Show Android SDK debug info
-        shell: bash
-        run: |
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          which sdkmanager || true
-          sdkmanager --version || true
-
-      - name: Accept Android SDK licenses
-        shell: bash
-        run: |
-          # Avoid failing on broken pipe from 'yes' when sdkmanager closes stdin early
-          (yes | sdkmanager --licenses) || true
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      - name: Prepare build environment (keystore & permissions)
-        shell: bash
-        run: |
-          touch .env
-          # If no release keystore provided, ensure a debug keystore exists
-          if [ ! -f debug.keystore ]; then
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          chmod +x ./gradlew
-
-      - name: Build Debug APK
-        shell: bash
-        run: |
-          ./gradlew assembleDebug --stacktrace --no-daemon
-
-      - name: Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: LogitPass-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 30
-          if-no-files-found: error
-
-      # Optional: build a signed release if you provide keystore as a base64 secret.
-      # To enable: set repository secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
-      - name: Prepare release keystore (optional)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
-        shell: bash
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
-          chmod 600 release.keystore
-          # Write a gradle properties file if your build.gradle reads these properties
-          cat > release.properties <<EOF
-          RELEASE_STORE_FILE=release.keystore
-          RELEASE_STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}
-          RELEASE_KEY_ALIAS=${{ secrets.KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}
-          EOF
-          # If your build.gradle expects the file to be named keystore.properties, rename/move accordingly:
-          # mv release.properties keystore.properties
-
-      - name: Build Release APK (optional)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
-        shell: bash
-        run: |
-          # If your Gradle setup reads properties from release.properties/keystore.properties, this will sign the release.
-          # Adjust the assemble task if your flavor/variant differs.
-          ./gradlew assembleRelease --stacktrace --no-daemon
-
-      - name: Upload Release APK Artifact (optional)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: LogitPass-release-apk
-          path: app/build/outputs/apk/release/*.apk
-          retention-days: 30
-          if-no-files-found: warn
+          echo "$ANDROID_S
+
