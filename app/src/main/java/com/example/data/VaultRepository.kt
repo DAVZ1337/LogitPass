@@ -7,6 +7,7 @@ import com.example.model.CredentialCategory
 import com.example.security.CryptoManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -18,21 +19,31 @@ class VaultRepository(
     private val cryptoManager: CryptoManager
 ) {
 
-    fun getDecryptedCredentialsFlow(): Flow<List<Credential>> {
-        return dao.getAllCredentials().map { entities ->
-            if (!cryptoManager.isUnlocked) {
-                emptyList()
-            } else {
-                entities.mapNotNull { entity ->
-                    try {
-                        decryptEntity(entity)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        null
-                    }
+    fun getDecryptedCredentialsFlow(unlockedFlow: Flow<Boolean>? = null): Flow<List<Credential>> {
+        val flow = if (unlockedFlow != null) {
+            combine(dao.getAllCredentials(), unlockedFlow) { entities, unlocked ->
+                if (!unlocked || !cryptoManager.isUnlocked) {
+                    emptyList()
+                } else {
+                    entities.map { decryptEntity(it) }
                 }
             }
-        }.flowOn(Dispatchers.IO)
+        } else {
+            dao.getAllCredentials().map { entities ->
+                if (!cryptoManager.isUnlocked) {
+                    emptyList()
+                } else {
+                    entities.map { decryptEntity(it) }
+                }
+            }
+        }
+        return flow.flowOn(Dispatchers.IO)
+    }
+
+    suspend fun getAllDecryptedCredentialsList(): List<Credential> = withContext(Dispatchers.IO) {
+        if (!cryptoManager.isUnlocked) return@withContext emptyList()
+        val entities = dao.getAllCredentialsList()
+        entities.map { decryptEntity(it) }
     }
 
     suspend fun getDecryptedCredentialById(id: String): Credential? = withContext(Dispatchers.IO) {
@@ -124,19 +135,35 @@ class VaultRepository(
         }
     }
 
-    private fun decryptEntity(entity: CredentialEntity): Credential {
+    fun decryptEntity(entity: CredentialEntity): Credential {
+        val title = safeDecrypt(entity.encryptedTitle).ifBlank { "Cuenta sin título" }
+        val username = safeDecrypt(entity.encryptedUsername)
+        val password = safeDecrypt(entity.encryptedPassword)
+        val url = safeDecrypt(entity.encryptedUrl)
+        val notes = safeDecrypt(entity.encryptedNotes)
+        val totp = safeDecrypt(entity.encryptedTotpSecret)
+
         return Credential(
             id = entity.id,
-            title = cryptoManager.decryptString(entity.encryptedTitle),
-            username = cryptoManager.decryptString(entity.encryptedUsername),
-            password = cryptoManager.decryptString(entity.encryptedPassword),
-            url = cryptoManager.decryptString(entity.encryptedUrl),
-            notes = cryptoManager.decryptString(entity.encryptedNotes),
-            totpSecret = cryptoManager.decryptString(entity.encryptedTotpSecret),
+            title = title,
+            username = username,
+            password = password,
+            url = url,
+            notes = notes,
+            totpSecret = totp,
             category = CredentialCategory.fromId(entity.category),
             isFavorite = entity.isFavorite,
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt
         )
+    }
+
+    private fun safeDecrypt(cipherText: String): String {
+        if (cipherText.isEmpty()) return ""
+        return try {
+            cryptoManager.decryptString(cipherText)
+        } catch (e: Exception) {
+            ""
+        }
     }
 }

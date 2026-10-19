@@ -34,10 +34,10 @@ class CryptoManager(private val context: Context) {
     private val secureRandom = SecureRandom()
     private val securityConfigFile = File(context.filesDir, "logitpass_vault_config.json")
 
-    @Volatile
-    private var activeSessionKey: SecretKey? = null
-
     companion object {
+        @Volatile
+        private var activeSessionKey: javax.crypto.SecretKey? = null
+
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val KEY_ALGORITHM = "AES"
         private const val DERIVATION_ALGORITHM = "PBKDF2WithHmacSHA256"

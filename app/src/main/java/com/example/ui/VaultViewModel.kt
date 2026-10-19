@@ -78,7 +78,11 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     )
     val generatedPassword: StateFlow<String> = _generatedPassword.asStateFlow()
 
-    val allCredentialsFlow = repository.getDecryptedCredentialsFlow()
+    val allCredentialsFlow = repository.getDecryptedCredentialsFlow(_isUnlocked)
+
+    suspend fun loadCredentialsDirectly(): List<Credential> {
+        return repository.getAllDecryptedCredentialsList()
+    }
 
     val filteredCredentials: StateFlow<List<Credential>> = combine(
         allCredentialsFlow,

@@ -53,13 +53,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.MainActivity
 import com.example.R
 import com.example.model.Credential
 import com.example.security.BiometricHelper
@@ -155,8 +155,11 @@ class AutofillPickerActivity : FragmentActivity() {
         }
 
         if (valuesAdded > 0) {
+            val dataset = datasetBuilder.build()
+            val fillResponse = android.service.autofill.FillResponse.Builder().addDataset(dataset).build()
             val replyIntent = Intent().apply {
-                putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, datasetBuilder.build())
+                putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, fillResponse)
+                putExtra("extra_dataset", dataset)
             }
             setResult(Activity.RESULT_OK, replyIntent)
         } else {
@@ -176,12 +179,13 @@ fun AutofillPickerContent(
     onCancel: () -> Unit
 ) {
     val isUnlocked by viewModel.isUnlocked.collectAsState()
+    val isVaultInitialized by viewModel.isVaultInitialized.collectAsState()
     val allCredentials by viewModel.allCredentialsFlow.collectAsState(initial = emptyList())
     var searchQuery by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     val unlockError by viewModel.unlockError.collectAsState()
 
-    // Auto-prompt biometric if available
+    // Auto-prompt biometría si está disponible
     LaunchedEffect(Unit) {
         if (!isUnlocked && viewModel.isBiometricAvailable && viewModel.isBiometricEnabled) {
             BiometricHelper.showBiometricPrompt(
@@ -189,7 +193,7 @@ fun AutofillPickerContent(
                 title = "Autorrellenar con LogitPass",
                 subtitle = "Usa tu huella o rostro para desbloquear tus contraseñas",
                 onSuccess = { viewModel.unlockWithBiometric() },
-                onError = { /* fallback to password */ }
+                onError = { /* fallback manual */ }
             )
         }
     }
@@ -197,9 +201,9 @@ fun AutofillPickerContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp)
+            .padding(18.dp)
     ) {
-        // Top Header
+        // Cabecera superior
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -208,20 +212,29 @@ fun AutofillPickerContent(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "🔑", fontSize = 22.sp)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Autorrellenar LogitPass",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                Column {
+                    Text(
+                        text = "Autorrellenar con LogitPass",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    if (!targetPackage.isNullOrBlank()) {
+                        Text(
+                            text = "Para: ${targetPackage.substringAfterLast('.')}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
             IconButton(onClick = onCancel) {
-                Icon(imageVector = Icons.Default.Close, contentDescription = "Cancelar")
+                Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar")
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         if (!isUnlocked) {
-            // Unlock view
+            // Vista de bloqueo con contraseña o huella
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -252,7 +265,7 @@ fun AutofillPickerContent(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     Text(
-                        text = "Introduce tu clave maestra o usa biometría",
+                        text = "Introduce tu clave maestra para seleccionar una cuenta",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -285,7 +298,7 @@ fun AutofillPickerContent(
                             .height(48.dp),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Desbloquear")
+                        Text("Desbloquear y Ver Cuentas")
                     }
 
                     if (viewModel.isBiometricAvailable && viewModel.isBiometricEnabled) {
@@ -305,17 +318,17 @@ fun AutofillPickerContent(
                         ) {
                             Icon(imageVector = Icons.Default.Fingerprint, contentDescription = null, tint = EmeraldSecurity)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Usar Huella / Rostro")
+                            Text("Usar Huella Dactilar")
                         }
                     }
                 }
             }
         } else {
-            // Unlocked: Select Credential
+            // Desbloqueado: Selector de credenciales
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Buscar cuenta para autorrellenar...") },
+                placeholder = { Text("Buscar entre tus contraseñas...") },
                 leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -324,8 +337,13 @@ fun AutofillPickerContent(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            val targetPkg = targetPackage?.lowercase() ?: ""
+            val targetDom = targetDomain?.lowercase() ?: ""
+
             val filtered = remember(allCredentials, searchQuery) {
-                if (searchQuery.isBlank()) allCredentials else {
+                if (searchQuery.isBlank()) {
+                    allCredentials
+                } else {
                     allCredentials.filter {
                         it.title.contains(searchQuery, ignoreCase = true) ||
                                 it.username.contains(searchQuery, ignoreCase = true) ||
@@ -334,70 +352,177 @@ fun AutofillPickerContent(
                 }
             }
 
-            if (filtered.isEmpty()) {
+            if (!isVaultInitialized) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(32.dp),
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "La bóveda aún no está configurada",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                activity.startActivity(Intent(activity, MainActivity::class.java))
+                                activity.finish()
+                            }
+                        ) {
+                            Text("Abrir LogitPass")
+                        }
+                    }
+                }
+            } else if (allCredentials.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Aún no tienes cuentas guardadas en tu bóveda",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                activity.startActivity(Intent(activity, MainActivity::class.java))
+                                activity.finish()
+                            }
+                        ) {
+                            Text("Abrir LogitPass para añadir cuentas")
+                        }
+                    }
+                }
+            } else if (filtered.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No se encontraron contraseñas coincidentes",
+                        text = "No se encontraron contraseñas que coincidan con \"$searchQuery\"",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
+                // Separar sugeridas de la app actual y el resto
+                val suggested = remember(filtered, targetPkg, targetDom) {
+                    if (targetPkg.isEmpty() && targetDom.isEmpty()) emptyList() else {
+                        filtered.filter {
+                            val combined = "${it.title} ${it.username} ${it.url}".lowercase()
+                            (targetDom.isNotEmpty() && combined.contains(targetDom)) ||
+                                    (targetPkg.isNotEmpty() && (combined.contains(targetPkg) || targetPkg.contains(it.title.lowercase())))
+                        }
+                    }
+                }
+
+                val others = remember(filtered, suggested) {
+                    filtered.filter { item -> suggested.none { it.id == item.id } }
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(filtered, key = { it.id }) { item ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onCredentialSelected(item) },
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(EmeraldSecurity.copy(alpha = 0.12f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(imageVector = Icons.Default.Key, contentDescription = null, tint = EmeraldSecurity, modifier = Modifier.size(20.dp))
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.title,
-                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                                    )
-                                    if (item.username.isNotEmpty()) {
-                                        Text(
-                                            text = item.username,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                    if (suggested.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "✨ Coincidencias sugeridas",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = EmeraldSecurity,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                        items(suggested, key = { "sug_${it.id}" }) { item ->
+                            CredentialPickerCard(item = item, onSelect = { onCredentialSelected(item) }, isSuggested = true)
+                        }
+                        if (others.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Rellenar",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = EmeraldSecurity
+                                    text = "Todas tus contraseñas",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 4.dp)
                                 )
                             }
                         }
                     }
+
+                    items(others, key = { it.id }) { item ->
+                        CredentialPickerCard(item = item, onSelect = { onCredentialSelected(item) }, isSuggested = false)
+                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CredentialPickerCard(
+    item: Credential,
+    onSelect: () -> Unit,
+    isSuggested: Boolean
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() },
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSuggested) EmeraldSecurity.copy(alpha = 0.05f) else MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (isSuggested) EmeraldSecurity.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(EmeraldSecurity.copy(alpha = 0.12f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Key,
+                    contentDescription = null,
+                    tint = EmeraldSecurity,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                )
+                if (item.username.isNotEmpty()) {
+                    Text(
+                        text = item.username,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Button(
+                onClick = onSelect,
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Rellenar", fontSize = 12.sp)
             }
         }
     }
