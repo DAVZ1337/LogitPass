@@ -7,14 +7,14 @@ on:
     branches: ["**"]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Build & Test Android APK
     runs-on: ubuntu-latest
-
-    env:
-      ANDROID_HOME: /opt/hostedtoolcache/android
-      ANDROID_SDK_ROOT: /opt/hostedtoolcache/android
-      JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
 
     steps:
       - name: Checkout repository
@@ -23,39 +23,80 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: "temurin"
           java-version: "17"
+          cache: "gradle"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
+      - name: Install Android SDK manually
+        shell: bash
+        env:
+          ANDROID_SDK_ROOT: /opt/android-sdk
+          ANDROID_HOME: /opt/android-sdk
         run: |
-          sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          set -euxo pipefail
 
-      - name: Prepare secrets / env
+          mkdir -p "$ANDROID_SDK_ROOT"
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+
+          if [ ! -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            echo "Descargando commandlinetools..."
+            cd /tmp
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+            unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT"
+
+            if [ -d "$ANDROID_SDK_ROOT/cmdline-tools/latest" ]; then
+              echo "cmdline-tools ya estaba instalado"
+            else
+              mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+              mv "$ANDROID_SDK_ROOT/cmdline-tools/bin" "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" 2>/dev/null || true
+            fi
+          fi
+
+          echo "SDK root:"
+          echo "$ANDROID_SDK_ROOT"
+
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "No se encontró sdkmanager en $SDKMANAGER"
+            ls -R "$ANDROID_SDK_ROOT" || true
+            exit 1
+          fi
+
+          echo "Aceptando licencias de Android SDK..."
+          yes 2>/dev/null | "$SDKMANAGER" --licenses >/dev/null || true
+
+          echo "Instalando paquetes requeridos..."
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      - name: Make Gradle Wrapper executable
+        run: chmod +x gradlew
+
+      - name: Prepare build environment
         shell: bash
         run: |
           set -e
+
           if [ ! -f .env ]; then
             cp .env.example .env
           fi
+
           if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
 
-      - name: Make Gradle executable
-        run: chmod +x gradlew
-
-      - name: Run unit tests
+      - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest --stacktrace
 
-      - name: Build APK
+      - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload artifact
+      - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: logitpass-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
