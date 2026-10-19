@@ -16,9 +16,6 @@ jobs:
     name: Build & Test Android APK
     runs-on: ubuntu-latest
 
-    env:
-      JAVA_VERSION: "17"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,34 +24,35 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: "17"
           cache: "gradle"
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         shell: bash
         run: |
           set -e
 
-          SDKMANAGER=""
           if [ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          elif [ -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager" ]; then
-            SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
           elif [ -x "/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
-          elif [ -x "/usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager" ]; then
-            SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager"
           else
-            echo "sdkmanager no encontrado"
+            echo "No se encontró sdkmanager"
             echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
             ls -R /usr/local/lib/android/sdk 2>/dev/null || true
             exit 1
           fi
 
-          echo "Usando SDK manager: $SDKMANAGER"
+          echo "Usando sdkmanager: $SDKMANAGER"
 
-          yes | "$SDKMANAGER" --licenses
-          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          # Aceptar licencias sin romper el step por Broken pipe
+          yes 2>/dev/null | "$SDKMANAGER" --licenses >/dev/null || true
+
+          # Instalar los paquetes necesarios para compileSdk 36
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
 
       - name: Make Gradle Wrapper executable
         run: chmod +x gradlew
@@ -64,12 +62,10 @@ jobs:
         run: |
           set -e
 
-          # Asegurar que .env exista para secrets-gradle-plugin
           if [ ! -f .env ]; then
             cp .env.example .env
           fi
 
-          # Restaurar debug.keystore desde base64 si no existe
           if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
