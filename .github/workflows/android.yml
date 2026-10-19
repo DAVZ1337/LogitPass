@@ -2,9 +2,9 @@ name: Build Android App
 
 on:
   push:
-    branches: [ "**" ]
+    branches: ["**"]
   pull_request:
-    branches: [ "**" ]
+    branches: ["**"]
   workflow_dispatch:
 
 concurrency:
@@ -27,16 +27,22 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform 36
+        run: |
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
       - name: Make Gradle Wrapper executable
         run: chmod +x gradlew
 
       - name: Prepare build environment
         run: |
-          # Asegurar que .env existe para el plugin secrets-gradle-plugin
           if [ ! -f .env ]; then
             cp .env.example .env
           fi
-          # Restaurar debug.keystore desde base64 si no existe
           if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
@@ -46,10 +52,3 @@ jobs:
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
-
-      - name: Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: logitpass-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 14
