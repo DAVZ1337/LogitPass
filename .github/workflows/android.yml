@@ -16,6 +16,9 @@ jobs:
     name: Build & Test Android APK
     runs-on: ubuntu-latest
 
+    env:
+      JAVA_VERSION: "17"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,26 +26,50 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+          distribution: "temurin"
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: "gradle"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK platform 36
+      - name: Install Android SDK packages
+        shell: bash
         run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          set -e
+
+          SDKMANAGER=""
+          if [ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          elif [ -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          elif [ -x "/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
+          elif [ -x "/usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager" ]; then
+            SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager"
+          else
+            echo "sdkmanager no encontrado"
+            echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+            ls -R /usr/local/lib/android/sdk 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Usando SDK manager: $SDKMANAGER"
+
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Make Gradle Wrapper executable
         run: chmod +x gradlew
 
       - name: Prepare build environment
+        shell: bash
         run: |
+          set -e
+
+          # Asegurar que .env exista para secrets-gradle-plugin
           if [ ! -f .env ]; then
             cp .env.example .env
           fi
+
+          # Restaurar debug.keystore desde base64 si no existe
           if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
@@ -52,3 +79,10 @@ jobs:
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: logitpass-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
