@@ -5,7 +5,10 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
@@ -186,22 +191,39 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     // Biometrics Toggle
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.Fingerprint, contentDescription = null, tint = EmeraldSecurity)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Desbloqueo Biométrico", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
-                                Text("Usa tu huella dactilar o reconocimiento facial", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(EmeraldSecurity.copy(alpha = 0.12f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Fingerprint,
+                                contentDescription = null,
+                                tint = EmeraldSecurity,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Desbloqueo Biométrico",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                            Text(
+                                text = "Usa tu huella dactilar o reconocimiento facial",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         Switch(
                             checked = isBiometricEnabled,
@@ -209,52 +231,115 @@ fun SettingsScreen(
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = EmeraldSecurity,
                                 checkedTrackColor = EmeraldSecurity.copy(alpha = 0.4f)
-                            )
+                            ),
+                            modifier = Modifier.testTag("biometric_switch")
                         )
                     }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                     // Change Master Password
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.Key, contentDescription = null, tint = EmeraldSecurity)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Contraseña Maestra", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
-                                Text("Deriva la clave de 256 bits (600k iteraciones)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(EmeraldSecurity.copy(alpha = 0.12f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = EmeraldSecurity,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Contraseña Maestra",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                            Text(
+                                text = "Deriva la clave de 256 bits (600k iteraciones)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         OutlinedButton(
                             onClick = { showChangePasswordDialog = true },
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .height(38.dp)
+                                .testTag("change_master_password_button"),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldSecurity),
+                            border = BorderStroke(1.dp, EmeraldSecurity.copy(alpha = 0.5f))
                         ) {
-                            Text("Cambiar", style = MaterialTheme.typography.labelSmall)
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Cambiar",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
                         }
                     }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                     // Lock Now
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = RoseError)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Bloquear Inmediatamente", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
-                                Text("Elimina la clave activa de la memoria RAM", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(RoseError.copy(alpha = 0.12f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = RoseError,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Bloquear Inmediatamente",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                            Text(
+                                text = "Elimina la clave activa de la memoria RAM",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         Button(
                             onClick = { viewModel.lockVault() },
                             colors = ButtonDefaults.buttonColors(containerColor = RoseError),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .height(38.dp)
+                                .testTag("lock_vault_button")
                         ) {
-                            Text("Bloquear", style = MaterialTheme.typography.labelSmall)
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Bloquear",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
                         }
                     }
                 }
@@ -355,7 +440,12 @@ fun SettingsScreen(
             onDismiss = { showChangePasswordDialog = false },
             onSubmit = { oldPass, newPass ->
                 val ok = viewModel.changeMasterPassword(oldPass, newPass)
-                if (ok) showChangePasswordDialog = false
+                if (ok) {
+                    showChangePasswordDialog = false
+                    true
+                } else {
+                    false
+                }
             }
         )
     }
@@ -364,7 +454,7 @@ fun SettingsScreen(
 @Composable
 private fun ChangePasswordDialog(
     onDismiss: () -> Unit,
-    onSubmit: (oldPass: String, newPass: String) -> Unit
+    onSubmit: (oldPass: String, newPass: String) -> Boolean
 ) {
     var oldPass by remember { mutableStateOf("") }
     var newPass by remember { mutableStateOf("") }
@@ -378,7 +468,10 @@ private fun ChangePasswordDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = oldPass,
-                    onValueChange = { oldPass = it },
+                    onValueChange = { 
+                        oldPass = it
+                        errorMessage = null
+                    },
                     label = { Text("Contraseña Actual") },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
@@ -387,7 +480,10 @@ private fun ChangePasswordDialog(
 
                 OutlinedTextField(
                     value = newPass,
-                    onValueChange = { newPass = it },
+                    onValueChange = { 
+                        newPass = it
+                        errorMessage = null
+                    },
                     label = { Text("Nueva Contraseña (mín 6 car.)") },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
@@ -396,7 +492,10 @@ private fun ChangePasswordDialog(
 
                 OutlinedTextField(
                     value = confirmPass,
-                    onValueChange = { confirmPass = it },
+                    onValueChange = { 
+                        confirmPass = it
+                        errorMessage = null
+                    },
                     label = { Text("Confirmar Nueva Contraseña") },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
@@ -410,12 +509,17 @@ private fun ChangePasswordDialog(
         },
         confirmButton = {
             Button(onClick = {
-                if (newPass.length < 6) {
+                if (oldPass.isBlank()) {
+                    errorMessage = "Debes ingresar tu contraseña actual"
+                } else if (newPass.length < 6) {
                     errorMessage = "La nueva contraseña debe tener mínimo 6 caracteres"
                 } else if (newPass != confirmPass) {
-                    errorMessage = "Las contraseñas no coinciden"
+                    errorMessage = "Las nuevas contraseñas no coinciden"
                 } else {
-                    onSubmit(oldPass, newPass)
+                    val success = onSubmit(oldPass, newPass)
+                    if (!success) {
+                        errorMessage = "La contraseña actual no es correcta"
+                    }
                 }
             }) {
                 Text("Actualizar")

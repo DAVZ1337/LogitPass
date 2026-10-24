@@ -87,6 +87,11 @@ class LogitAutofillService : AutofillService() {
                 val responseBuilder = FillResponse.Builder()
                 var datasetsAdded = 0
 
+                val inlineRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    request.inlineSuggestionsRequest
+                } else null
+                val specs = inlineRequest?.inlinePresentationSpecs
+
                 // Si la bóveda está desbloqueada en memoria, buscar credenciales
                 if (cryptoManager.isUnlocked) {
                     val allCredentials = repository.getAllDecryptedCredentialsList()
@@ -101,11 +106,12 @@ class LogitAutofillService : AutofillService() {
                                 (targetPkg.isNotEmpty() && (combined.contains(targetPkg) || targetPkg.contains(item.title.lowercase())))
                     }
 
-                    // Si no hay coincidencias exactas pero hay credenciales, tomar hasta 2 más recientes
+                    // Determinar cuántas sugerencias presentar (respetando maxSuggestionCount del teclado si aplica)
+                    val maxAllowed = inlineRequest?.maxSuggestionCount ?: 3
                     val toSuggest = if (matching.isNotEmpty()) {
-                        matching.take(3)
+                        matching.take(maxAllowed.coerceAtLeast(1))
                     } else {
-                        allCredentials.take(2)
+                        allCredentials.take(2.coerceAtMost(maxAllowed))
                     }
 
                     for (item in toSuggest) {
@@ -117,13 +123,13 @@ class LogitAutofillService : AutofillService() {
 
                         var itemAdded = false
 
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                            request.inlineSuggestionsRequest != null &&
-                            request.inlineSuggestionsRequest!!.inlinePresentationSpecs.isNotEmpty()
-                        ) {
-                            val spec = request.inlineSuggestionsRequest!!.inlinePresentationSpecs[0]
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !specs.isNullOrEmpty()) {
+                            val spec = specs[datasetsAdded.coerceAtMost(specs.size - 1)]
                             val label = if (item.username.isNotBlank()) item.username else item.title
                             val inline = createInlinePresentation(spec, pendingIntent, "🔑 $label", item.title)
+
+                            // HeliBoard / Gboard compat: asignar inline al Dataset Y a los campos específicos
+                            datasetBuilder.setInlinePresentation(inline)
 
                             usernameId?.let { id ->
                                 val u = item.username.ifBlank { item.title }
@@ -166,8 +172,17 @@ class LogitAutofillService : AutofillService() {
                         val moreDatasetBuilder = Dataset.Builder(morePresentation)
                             .setAuthentication(pendingIntent.intentSender)
 
-                        usernameId?.let { moreDatasetBuilder.setValue(it, null, morePresentation) }
-                        passwordId?.let { moreDatasetBuilder.setValue(it, null, morePresentation) }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !specs.isNullOrEmpty()) {
+                            val moreSpec = specs.last()
+                            val moreInline = createInlinePresentation(moreSpec, pendingIntent, "🔑 Más cuentas...", "LogitPass")
+                            moreDatasetBuilder.setInlinePresentation(moreInline)
+
+                            usernameId?.let { moreDatasetBuilder.setValue(it, null, morePresentation, moreInline) }
+                            passwordId?.let { moreDatasetBuilder.setValue(it, null, morePresentation, moreInline) }
+                        } else {
+                            usernameId?.let { moreDatasetBuilder.setValue(it, null, morePresentation) }
+                            passwordId?.let { moreDatasetBuilder.setValue(it, null, morePresentation) }
+                        }
 
                         responseBuilder.addDataset(moreDatasetBuilder.build())
                         callback.onSuccess(responseBuilder.build())
@@ -179,27 +194,35 @@ class LogitAutofillService : AutofillService() {
                 // Mostrar autenticación de LogitPass en teclado y menú desplegable
                 val dropdownPresentation = RemoteViews(packageName, R.layout.autofill_dataset_item).apply {
                     setTextViewText(R.id.autofill_title, "LogitPass")
-                    setTextViewText(R.id.autofill_subtitle, "Toca para autorrellenar contraseña")
+                    setTextViewText(R.id.autofill_subtitle, "Toca para desbloquear y autorrellenar")
                 }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                    request.inlineSuggestionsRequest != null &&
-                    request.inlineSuggestionsRequest!!.inlinePresentationSpecs.isNotEmpty()
-                ) {
-                    val spec = request.inlineSuggestionsRequest!!.inlinePresentationSpecs[0]
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !specs.isNullOrEmpty()) {
+                    val spec = specs[0]
                     val inlinePresentation = createInlinePresentation(
                         spec = spec,
                         pendingIntent = pendingIntent,
-                        title = "🔑 LogitPass",
+                        title = "🔑 Desbloquear LogitPass",
                         subtitle = "Autorrellenar"
                     )
 
+                    // Autenticación a nivel de respuesta para teclados estándar (Gboard, Samsung)
                     responseBuilder.setAuthentication(
                         autofillIds,
                         pendingIntent.intentSender,
                         dropdownPresentation,
                         inlinePresentation
                     )
+
+                    // Dataset con autenticación e InlinePresentation para teclados FOSS (HeliBoard, FlorisBoard)
+                    val authDatasetBuilder = Dataset.Builder(dropdownPresentation)
+                        .setAuthentication(pendingIntent.intentSender)
+                        .setInlinePresentation(inlinePresentation)
+
+                    usernameId?.let { authDatasetBuilder.setValue(it, null, dropdownPresentation, inlinePresentation) }
+                    passwordId?.let { authDatasetBuilder.setValue(it, null, dropdownPresentation, inlinePresentation) }
+
+                    responseBuilder.addDataset(authDatasetBuilder.build())
                 } else {
                     responseBuilder.setAuthentication(
                         autofillIds,
